@@ -1,0 +1,147 @@
+---
+title: "reefoshimonurseries"
+author: "Ewout Knoester"
+date: "4 August 2021"
+output: html_document
+---
+
+# Setup
+```{r setup, include=FALSE}
+rm(list=ls()) # Clear workspace
+# MAKE SURE FILE IS SAVED BEFORE RUNNING THIS CODE:
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path)) #Set directory at current (make sure file is saved locally)
+
+library(readxl) # Import excel sheets
+library(tidyverse) # tidy data
+library(panelr) # Convert data from wide to long
+library(emmeans) # Pairwise comparisons
+library(ggthemes) # pretty plots
+library(data.table) # select rows
+library(janitor) # row sums
+library(treemap) # treemap
+
+```
+
+# Data
+```{r data import, include=FALSE}
+# Import excel sheet
+raw.data <- read_excel("Measurements timeline.xlsx", sheet = "Overview (monthly)")
+
+# Update column names
+raw.data.1 <- raw.data
+colnames(raw.data.1) <- gsub("\\s*\\([^\\)]+\\)","",as.character(colnames(raw.data.1)))
+
+# Drop and some columns
+raw.data.1 <- data.frame(raw.data.1)
+raw.data.1 <- raw.data.1 %>%  select(-c(3, 6, 7, 8, 9, 10))
+Cut <- which(colnames(raw.data.1)=="X42248.0") - 1 # Cutoff column number where species stop (ie first date)
+raw.data.1 <- raw.data.1[,1:Cut] 
+
+# Select nurseries only: Floater, Tables and Trees
+raw.data.2 <- raw.data.1[raw.data.1$Structure %like% "Tree" | raw.data.1$Structure %like% "Floater" | raw.data.1$Structure %like% "Table" ,]
+
+# Select active nurseries only
+frac.data <- raw.data.2[raw.data.2$Status %in% c("No", "No (strt-end)", "No (cont)", "Start - End", "Continuous"),]
+frac.data <- frac.data %>%  select(-c(2, 3))
+
+# Wide to long
+frac.data$Structure <- factor(frac.data$Structure)
+frac.data$Site <- factor(frac.data$Site)
+
+LastCol <- ncol(frac.data)
+ActiveTrees <- nrow(frac.data)
+ActiveFrags <- ActiveTrees * 60
+ActiveSpecs <- LastCol - 3
+
+frac.data <- gather(frac.data, condition, measurement, 4:all_of(LastCol), factor_key=TRUE)
+
+# Get fractions
+frac.data <- as.data.frame(append(frac.data,list(Fraction = ""), after = 5))
+frac.data$measurement <- as.numeric(frac.data$measurement)
+frac.data$Fraction <- frac.data$measurement/ frac.data$Genera
+
+#Get fragments
+frac.data <- as.data.frame(append(frac.data,list(Frags = ""), after = 6))
+frac.data$Frags <- frac.data$Fraction * 60
+ActiveFrags_TRUE <- sum(frac.data$Frags, na.rm = TRUE)
+
+# Get sums
+frag.data <- as.data.frame(tapply(frac.data$Frags, frac.data$condition, FUN = sum, na.rm = TRUE))
+frag.data <- tibble::rownames_to_column(frag.data, "Species")
+colnames(frag.data) <- c("Species", "Frags")
+frag.data.tot <- adorn_totals(frag.data, "row")
+
+
+
+# Group by Genus
+frag.data <- as.data.frame(append(frag.data,list(Genus = ""), after = 1))
+frag.data$Genus <- gsub("([A-Za-z]+).*", "\\1", frag.data$Species)
+
+# Shorten Genus name
+frag.data <- separate(frag.data, Species, c("Genus", "Speciesspecies"), "\\.", remove = FALSE)
+frag.data <- as.data.frame(append(frag.data,list(Abbreviation = ""), after = 3))
+frag.data$Abbreviation <- paste(substr(frag.data$Genus,1,1), frag.data$Speciesspecies, sep = ".\u00A0")
+
+# Create Species + Frags index
+frag.data <- as.data.frame(append(frag.data,list(Index = ""), after = 5))
+frag.data <- mutate(frag.data, Index = paste(Abbreviation, Frags, sep = "\n"))
+
+# Genus totals
+genus.data <- as.data.frame(tapply(frag.data$Frags, frag.data$Genus, FUN = sum, na.rm = TRUE))
+colnames(genus.data) <- c("Frags")
+genus.data <- tibble::rownames_to_column(genus.data, "Genus")
+genus.data <-genus.data[order(-genus.data$Frags),]
+
+```
+
+# Graphs
+```{r}
+
+# Colours are sorted alpabtically by genus
+Pal <- factor(c(
+  "#FFA259", # Red (Acropora)
+  "#6420FF", # Violet (Isopora)
+  "#FF4848", # Red (Millepora)
+  "#FFFFFF", # White (Pavona)
+  "#EDA9FF", # Pink (Pocillopora)
+  "#FFFE8C", # Yellow (Porites)
+  "#7FD0FF", # Turq (Stylophora)
+  "#33FF61"  # Green (Spare)
+))
+
+treemap(frag.data, index=c("Genus", "Index"), vSize="Frags",  type="index",
+        fontsize.labels=c(2,2), fontcolor.labels=c("transparent","#292929"), fontface.labels=c(4,3),
+        bg.labels=c("transparent"), inflate.labels = T, overlap.labels=1, lowerbound.cex.labels = 0,
+        align.labels=list(c("center", "center"), c("center", "center")), 
+        border.col=c("#FFFFFF","#F4F4F4"), border.lwds=c(6,2),
+        palette = Pal,
+        title= paste("Total fragments:", ActiveFrags_TRUE),  fontsize.title= 32 
+        ) 
+
+treemap(frag.data, index=c("Genus", "Species"), vSize="Frags",  type="index",
+        fontsize.labels=c(2,2), fontcolor.labels=c("transparent","#292929"), fontface.labels=c(4,3),
+        bg.labels=c("transparent"), inflate.labels = T, overlap.labels=1, lowerbound.cex.labels = 0,
+        align.labels=list(c("center", "center"), c("center", "center")), 
+        border.col=c("#FFFFFF","#F4F4F4"), border.lwds=c(6,2),
+        palette = Pal,
+        title= paste("Total fragments:", ActiveFrags_TRUE),  fontsize.title= 32 
+        ) 
+
+nurseries <- paste ("Active nursery structures:", ActiveTrees)
+species <- paste("Number of species:", ActiveSpecs)
+frags <- paste("Total number of fragments:", ActiveFrags_TRUE)
+title <- paste(nurseries, frags, species, sep = ".\u00A0")
+
+tiff(file="Treemap_species.tiff", width=23, height = 12, units="cm", res=300)
+treemap(frag.data, index=c("Genus", "Abbreviation"), vSize="Frags",  type="index",
+        fontsize.labels=c(1,1), fontcolor.labels=c("#000000", "#FFFFFF"), fontface.labels=c(4,3),
+        bg.labels=c("transparent"), inflate.labels = T, overlap.labels=0.8, lowerbound.cex.labels = 0,
+        align.labels=list(c("center", "center"), c("left", "top")), xmod.labels = 0, ymod.labels = -0.01,
+        border.col=c("#FFFFFF","#F4F4F4"), border.lwds=c(6,2),
+        palette = Pal,
+        title= title,  fontsize.title= 14 
+        ) 
+dev.off()
+
+```
+
