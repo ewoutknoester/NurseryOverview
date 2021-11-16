@@ -8,8 +8,7 @@ output: html_document
 # Setup
 ```{r setup, include=FALSE}
 rm(list=ls()) # Clear workspace
-# MAKE SURE FILE IS SAVED BEFORE RUNNING THIS CODE:
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path)) #Set directory at current (make sure file is saved locally)
+knitr::opts_knit$set(root.dir = '/tmp') #Set directory at current directory for all subsequent chunks
 
 library(readxl) # Import excel sheets
 library(tidyverse) # tidy data
@@ -67,11 +66,11 @@ ActiveFrags_TRUE <- sum(frac.data$Frags, na.rm = TRUE)
 
 # Get sums
 frag.data <- as.data.frame(tapply(frac.data$Frags, frac.data$condition, FUN = sum, na.rm = TRUE))
+frag.data.loc <- as.data.frame(with(frac.data, tapply(frac.data$Frags, list(condition, Site), FUN = sum, na.rm = TRUE)))
+frag.data <- cbind(frag.data, frag.data.loc)
 frag.data <- tibble::rownames_to_column(frag.data, "Species")
-colnames(frag.data) <- c("Species", "Frags")
+colnames(frag.data)[2] <- c("Total")
 frag.data.tot <- adorn_totals(frag.data, "row")
-
-
 
 # Group by Genus
 frag.data <- as.data.frame(append(frag.data,list(Genus = ""), after = 1))
@@ -81,21 +80,26 @@ frag.data$Genus <- gsub("([A-Za-z]+).*", "\\1", frag.data$Species)
 frag.data <- separate(frag.data, Species, c("Genus", "Speciesspecies"), "\\.", remove = FALSE)
 frag.data <- as.data.frame(append(frag.data,list(Abbreviation = ""), after = 3))
 frag.data$Abbreviation <- paste(substr(frag.data$Genus,1,1), frag.data$Speciesspecies, sep = ".\u00A0")
+frag.data$Abbreviation <- paste("  ", frag.data$Abbreviation, "  ", sep = "") # Add space before and after names
 
 # Create Species + Frags index
 frag.data <- as.data.frame(append(frag.data,list(Index = ""), after = 5))
-frag.data <- mutate(frag.data, Index = paste(Abbreviation, Frags, sep = "\n"))
+frag.data <- mutate(frag.data, Index = paste(Abbreviation, Total, sep = "\n"))
 
 # Genus totals
-genus.data <- as.data.frame(tapply(frag.data$Frags, frag.data$Genus, FUN = sum, na.rm = TRUE))
-colnames(genus.data) <- c("Frags")
+genus.data <- as.data.frame(tapply(frag.data$Total, frag.data$Genus, FUN = sum, na.rm = TRUE))
+colnames(genus.data) <- c("Total")
+genus.data <- as.data.frame(append(genus.data,list(FF = "", KH = "", PP = ""), after = 1))
+genus.data$FF <- tapply(frag.data$FF, frag.data$Genus, FUN = sum, na.rm = TRUE)
+genus.data$KH <- tapply(frag.data$KH, frag.data$Genus, FUN = sum, na.rm = TRUE)
+genus.data$PP <- tapply(frag.data$PP, frag.data$Genus, FUN = sum, na.rm = TRUE)
 genus.data <- tibble::rownames_to_column(genus.data, "Genus")
-genus.data <-genus.data[order(-genus.data$Frags),]
+genus.data <-genus.data[order(-genus.data$Total),]
 
 ```
 
-# Graphs
-```{r}
+# Graphs Total
+```{r graphs total}
 
 # Colours are sorted alpabtically by genus
 Pal <- factor(c(
@@ -109,7 +113,7 @@ Pal <- factor(c(
   "#33FF61"  # Green (Spare)
 ))
 
-treemap(frag.data, index=c("Genus", "Index"), vSize="Frags",  type="index",
+treemap(frag.data, index=c("Genus", "Index"), vSize="Total",  type="index",
         fontsize.labels=c(2,2), fontcolor.labels=c("transparent","#292929"), fontface.labels=c(4,3),
         bg.labels=c("transparent"), inflate.labels = T, overlap.labels=1, lowerbound.cex.labels = 0,
         align.labels=list(c("center", "center"), c("center", "center")), 
@@ -118,7 +122,7 @@ treemap(frag.data, index=c("Genus", "Index"), vSize="Frags",  type="index",
         title= paste("Total fragments:", ActiveFrags_TRUE),  fontsize.title= 32 
         ) 
 
-treemap(frag.data, index=c("Genus", "Species"), vSize="Frags",  type="index",
+treemap(frag.data, index=c("Genus", "Species"), vSize="Total",  type="index",
         fontsize.labels=c(2,2), fontcolor.labels=c("transparent","#292929"), fontface.labels=c(4,3),
         bg.labels=c("transparent"), inflate.labels = T, overlap.labels=1, lowerbound.cex.labels = 0,
         align.labels=list(c("center", "center"), c("center", "center")), 
@@ -133,10 +137,12 @@ frags <- paste("Total number of fragments:", ActiveFrags_TRUE)
 title <- paste(nurseries, frags, species, sep = ".\u00A0")
 
 tiff(file="Treemap_species.tiff", width=23, height = 12, units="cm", res=300)
-treemap(frag.data, index=c("Genus", "Abbreviation"), vSize="Frags",  type="index",
+treemap(frag.data, index=c("Genus", "Abbreviation"), vSize="Total",  type="index",
         fontsize.labels=c(1,1), fontcolor.labels=c("#000000", "#FFFFFF"), fontface.labels=c(4,3),
         bg.labels=c("transparent"), inflate.labels = T, overlap.labels=0.8, lowerbound.cex.labels = 0,
-        align.labels=list(c("center", "center"), c("left", "top")), xmod.labels = 0, ymod.labels = -0.01,
+        align.labels=list(c("center","center"),c("center","center")),
+        xmod.labels = c(0.01, -0.01), # negative is to the left
+        ymod.labels = c(-0.06, 0.12), # negative is down
         border.col=c("#FFFFFF","#F4F4F4"), border.lwds=c(6,2),
         palette = Pal,
         title= title,  fontsize.title= 14 
@@ -144,4 +150,3 @@ treemap(frag.data, index=c("Genus", "Abbreviation"), vSize="Frags",  type="index
 dev.off()
 
 ```
-
