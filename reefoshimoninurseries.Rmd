@@ -24,7 +24,7 @@ library(treemap) # treemap
 # Data
 ```{r data import, include=FALSE}
 # Import excel sheet
-raw.data <- read_excel("Measurements timeline.xlsx", sheet = "Overview (monthly)")
+raw.data <- read_excel("Measurements timeline_2021-07.xlsx", sheet = "Overview (monthly)")
 
 # Update column names
 raw.data.1 <- raw.data
@@ -136,7 +136,7 @@ species <- paste("Number of species:", ActiveSpecs)
 frags <- paste("Total number of fragments:", ActiveFrags_TRUE)
 title <- paste(nurseries, frags, species, sep = ".\u00A0")
 
-tiff(file="Treemap_species.tiff", width=23, height = 12, units="cm", res=300)
+tiff(file="Treemap_species_2021-07.tiff", width=23, height = 12, units="cm", res=300)
 treemap(frag.data, index=c("Genus", "Abbreviation"), vSize="Total",  type="index",
         fontsize.labels=c(1,1), fontcolor.labels=c("#000000", "#FFFFFF"), fontface.labels=c(4,3),
         bg.labels=c("transparent"), inflate.labels = T, overlap.labels=0.8, lowerbound.cex.labels = 0,
